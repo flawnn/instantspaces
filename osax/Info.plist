@@ -3,7 +3,7 @@
 <plist version="1.0">
   <dict>
     <key>CFBundleDevelopmentRegion</key><string>en</string>
-    <key>CFBundleIdentifier</key><string>com.example.instantspaces.osax</string>
+    <key>CFBundleIdentifier</key><string>eu.flawn.instantspaces.osax</string>
     <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
     <key>CFBundleName</key><string>instantspaces</string>
     <key>CFBundlePackageType</key><string>osax</string>
