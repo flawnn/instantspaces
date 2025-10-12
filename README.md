@@ -3,84 +3,126 @@
 Disable macOS Desktop Spaces switching animation by patching Dock **in-process** with a tiny scripting addition payload. Supports:
 - macOS: 14 (Sonoma) and 15 (Sequoia)
 - Arch: Apple Silicon (arm64e)
+- Modes:
+  - zero: force 0.0s (instant)
+  - min0125: force 0.125s using a single-instruction FP immediate 
 - Requires: SIP disabled, Xcode Command Line Tools
 
 The whole patching mechanism is based on [yabai](https://github.com/koekeishiya/yabai)'s scripting addition. I just wanted to have it stand-alone to fix an issue with [redrawing of floating windows](https://github.com/koekeishiya/yabai/issues/2491).
 
 <details>
-<summary>How did I fix it?</summary>
+<summary>⁉️ How did I fix it?</summary>
+<br>
 
-The Spaces switching animation duration is being set to zero and probably fucks around with the compositor rendering phases, so that floating windows or popups are not being redrawn. Only way to fix this is triggering a redraw which is cumbersome
-
-So I set a very small animation duration frame of 0.125 seconds that still allows for redraws but is faster than stock.
+> The Spaces switching animation duration is being set to zero and probably fucks around with the compositor rendering phases, so that floating windows or popups are not being redrawn. Only way to fix this is triggering a redraw which is cumbersome
+>
+> So I set a very small animation duration frame of 0.125 seconds that still allows for redraws but is faster than stock.
 
 </details>
 
+## Inject and patch
 
-## Install
-
-```sh
-./scripts/install.sh
-```
-
-This builds an arm64e `payload.dylib`, installs it to:
-```
-/Library/ScriptingAdditions/instantspaces.osax/Contents/Resources/payload.dylib
-```
-and ad‑hoc signs it.
-
-## Inject and verify
+We recommend restarting Dock first, then injecting and patching twice (our script does two patch passes followed by verify). Patching twice works around rare attach or timing hiccups.
 
 ```sh
 # Restart Dock so we patch early
 killall Dock
 
-# Inject and run patch + verify
-sudo ./scripts/inject.sh
+# Inject and patch with a mode:
+#   zero    -> 0.0s animation (instant)
+#   min0125 -> 0.125s animation (near-instant; helps floating windows)
+sudo ./scripts/inject.sh min0125
+# or
+sudo ./scripts/inject.sh zero
 ```
 
-You should see messages in Console.app (filter: `instantspaces`) like:
+What the injector does
+- Sets INSTANTSPACES_MODE inside the Dock process
+- dlopen()s the payload
+- Calls instantspaces_patch() twice in a row
+- Calls instantspaces_verify() to list/confirm patched sites
+
+Check logs
+- Console.app: filter “Dock” and “[instantspaces]”
+- File log: /private/var/tmp/instantspaces.<DockPID>.log
+
+You’ll see messages like:
 ```
 [instantspaces] constructor: payload loaded into Dock pid=...
+[instantspaces] instantspaces_patch: entered (mode=min0125)
 [instantspaces] Dock __TEXT=[0x... .. 0x... )
-[instantspaces] Patched site @0x...: before=0x..., after=0x2f00e400
+[instantspaces] Patched site @0x...: before=0x..., after=0x1e681000
 [instantspaces] Total sites patched: 2
 [instantspaces] Verify: patched_count=2
-[instantspaces] Verify patched @0x... => 0x2f00e400
-...
+[instantspaces] Verify patched @0x... => 0x1e681000
 ```
 
-Try switching Spaces (Ctrl+Arrow and/or trackpad swipe). It should now be instant on all paths.
+## Modes
+
+- zero
+  - Writes opcode 0x2f00e400 at matched sites (forces duration register to 0.0)
+  - Fastest visually, but can cause “floating” windows to momentarily disappear for some users
+- min0125
+  - Writes opcode 0x1e681000 (fmov d0, #0.125) at matched sites
+  - Keeps transitions near-instant while ensuring the compositor gets a frame to redraw
+
+Switching modes
+- Modes are set per injection. To change, restart Dock and re-run the inject script with the desired mode:
+  - killall Dock; sudo ./scripts/inject.sh min0125
+
+## Auto-run at login (LaunchAgent)
+
+To inject automatically on login (and after Dock relaunches), install a per-user LaunchAgent that runs a small retrying injector wrapper.
+
+1) Edit scripts/auto-inject.sh to choose your default mode (zero or min0125). It already retries multiple times.
+2) Copy and adjust the LaunchAgent (update the absolute path to your repo):
+   - In eu.flawn.instantspaces.inject.plist, set the ProgramArguments path to your auto-inject.sh.
+3) Install and load:
+
+```sh
+# Create ~/Library/LaunchAgents if needed
+mkdir -p ~/Library/LaunchAgents
+
+# Copy the plist
+cp eu.flawn.instantspaces.inject.plist ~/Library/LaunchAgents/
+
+# Load (for the current user session)
+launchctl bootstrap gui/$UID ~/Library/LaunchAgents/eu.flawn.instantspaces.inject.plist
+launchctl enable gui/$UID/eu.flawn.instantspaces.inject
+launchctl kickstart -k gui/$UID/eu.flawn.instantspaces.inject
+```
+
+To unload/disable:
+```sh
+launchctl bootout gui/$UID ~/Library/LaunchAgents/eu.flawn.instantspaces.inject.plist
+launchctl disable gui/$UID/eu.flawn.instantspaces.inject
+```
+
+Notes
+- The agent runs in your user session (Dock is per-user). It will attempt injection repeatedly for a short window after login and also if Dock restarts.
+- On first use, macOS may prompt to allow Terminal/LLDB under Privacy & Security > Developer Tools. Run the injector once manually if prompts do not appear in background.
 
 ## Uninstall
 
 ```sh
+# Optional: unload agent if installed
+launchctl bootout gui/$UID ~/Library/LaunchAgents/eu.flawn.instantspaces.inject.plist 2>/dev/null || true
+rm -f ~/Library/LaunchAgents/eu.flawn.instantspaces.inject.plist
+
+# Remove the osax payload
 ./scripts/uninstall.sh
 ```
 
-## Notes
+## Troubleshooting
 
-- This payload matches two known instruction patterns (Sonoma and Sequoia) and patches **all** matches within Dock’s `__TEXT` segment, then records and verifies patched addresses. On 14.7.5, two specific sites typically matter for Ctrl+Arrow and gesture switching; patching those removes animation.
-
-- Logging:
-  - Console.app: filter process “Dock” and term “instantspaces”
-  - File: `/private/var/tmp/instantspaces.<DockPID>.log`
-
-- If injection prints `dlopen ... incompatible architecture (have 'arm64', need 'arm64e')`, rebuild with:
-  ```
-  clang -arch arm64e ...
-  ```
-
-- If `dlopen` returns NULL, check `dlerror()` in the LLDB transcript. Fixes commonly include:
-  - Move payload out of `~/Downloads` (quarantine)
-  - `codesign -s - -f` the dylib
-  - Ensure Developer Tools are permitted in System Settings
-
-- If Ctrl+Arrow still animates:
-  - Ensure “Displays have separate Spaces” is enabled (System Settings > Desktop & Dock)
-  - Kill and restart Dock, then inject again
-  - Confirm in LLDB: `image lookup -n instantspaces_verify` then call verify via dlsym (see script)
-
-## Roadmap / TODO
-
-- Optional non-zero minimal duration (e.g., 0.125s) via alternative opcode at patch site(s).
+- dlopen returns NULL:
+  - Ensure the payload is arm64e (our Makefile builds arm64e)
+  - Clear quarantine and ad-hoc sign (install.sh and make install do this)
+  - Run once manually to grant Developer Tools permission (Terminal/LLDB)
+- EXC_BREAKPOINT during LLDB expr:
+  - Retry inject; our script patches twice by default to withstand occasional attach hiccups
+  - Ensure SIP is relaxed consistently, and “Displays have separate Spaces” is enabled in System Settings > Desktop & Dock
+- Animation still present:
+  - Use min0125 mode for stability if floaters disappear on zero
+  - Confirm Console shows “Total sites patched: 2” (or more) and Verify entries
+  - Kill Dock and inject again to patch earlier in its lifecycle
