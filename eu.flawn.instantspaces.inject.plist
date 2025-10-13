@@ -7,14 +7,18 @@
 
     <key>ProgramArguments</key>
     <array>
-      <string>/bin/bash</string>
-      <string>-lc</string>
-      <string>/Users/flawn/Documents/Projects/instantspaces/scripts/auto-inject.sh min0125</string>
+      <!-- TODO: update this to the absolute path of auto-inject.sh in your clone -->
+      <string>/path/to/instantspaces/scripts/auto-inject.sh</string>
+      <string>min0125</string>
     </array>
 
-    <!-- Run when loaded (login) and keep alive (if it crashes) -->
+    <!-- Run when loaded (login) and only keep alive on failure (so success exits cleanly) -->
     <key>RunAtLoad</key><true/>
-    <key>KeepAlive</key><true/>
+    <key>KeepAlive</key>
+    <dict>
+      <key>SuccessfulExit</key>
+      <false/>
+    </dict>
 
     <!-- Ensure login session -->
     <key>LimitLoadToSessionType</key>
@@ -30,5 +34,11 @@
     <!-- Optional: throttle restarts in case of rapid failures -->
     <key>ThrottleInterval</key>
     <integer>5</integer>
+
+    <!-- Optional: log paths for debugging -->
+    <key>StandardOutPath</key>
+    <string>~/Library/Logs/instantspaces.auto-inject.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>~/Library/Logs/instantspaces.auto-inject.err.log</string>
   </dict>
 </plist>

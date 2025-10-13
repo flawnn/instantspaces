@@ -6,6 +6,11 @@ MODE="${1:-min0125}"
 
 PAYLOAD="/Library/ScriptingAdditions/instantspaces.osax/Contents/Resources/payload.dylib"
 
+# Set a custom process title so it is easy to find/kill via pgrep/pkill
+if command -v exec -a >/dev/null 2>&1; then
+  : # exec -a supported by bash builtin when used on invocation; noop here
+fi
+
 # Wait for Dock to appear
 for i in {1..30}; do
   if pgrep -x Dock >/dev/null 2>&1; then
@@ -17,7 +22,7 @@ done
 PID="$(pgrep -x Dock || true)"
 if [[ -z "${PID}" ]]; then
   echo "Dock not running; giving up."
-  exit 0
+  exit 75  # temporary failure so launchd can retry
 fi
 
 # Try injection a few times (works around occasional attach/transient hiccups)
@@ -41,4 +46,4 @@ for attempt in $(seq 1 $tries); do
 done
 
 echo "auto-inject failed after $tries attempts (mode=$MODE)"
-exit 0
+exit 75  # temporary failure; launchd will retry per KeepAlive/ThrottleInterval
