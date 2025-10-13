@@ -21,11 +21,11 @@ if [[ -z "${PID}" ]]; then
 fi
 
 # Try injection a few times (works around occasional attach/transient hiccups)
-tries=3
+tries=2
 for attempt in $(seq 1 $tries); do
   echo "auto-inject attempt $attempt/$tries (mode=$MODE)"
   /usr/bin/lldb -p "${PID}" -b \
-    -o 'settings set target.process.thread.step-out-avoid-no-debug true' \
+    -o 'settings set target.process.thread.step-out-avoid-nodebug true' \
     -o "expr (int)setenv(\"INSTANTSPACES_MODE\",\"$MODE\",1)" \
     -o "expr (void*)dlopen(\"$PAYLOAD\", 2)" \
     -o 'expr (char*)dlerror()' \

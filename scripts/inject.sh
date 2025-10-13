@@ -16,7 +16,7 @@ fi
 # We also print dlerror() right after dlopen.
 # Use compound expressions so LLDB doesn't lose temp vars between calls.
 /usr/bin/lldb -p "${PID}" -b \
-  -o 'settings set target.process.thread.step-out-avoid-no-debug true' \
+  -o 'settings set target.process.thread.step-out-avoid-nodebug true' \
   -o "expr (int)setenv(\"INSTANTSPACES_MODE\",\"$MODE\",1)" \
   -o "expr (void*)dlopen(\"$PAYLOAD\", 2)" \
   -o 'expr (char*)dlerror()' \
