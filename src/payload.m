@@ -76,6 +76,11 @@ static void get_patterns(NSArray<NSString*> **out){
             @"00 10 6A 1E A8 ?? ?? D1 ?? 01 ?? F8", // Sequoia
             @"00 10 6A 1E E0 03 14 AA ?? 03 ?? AA"  // Sonoma fallback
         ];
+    } else if(v.majorVersion==26){
+        *out=@[
+            @"00 10 6A 1E A8 ?? ?? D1 ?? 01 ?? F8", // Tahoe (same as Sequoia)
+            @"00 10 6A 1E E0 03 14 AA ?? 03 ?? AA"  // Sonoma fallback
+        ];
     } else {
         *out=@[
             @"00 10 6A 1E E0 03 14 AA ?? 03 ?? AA",
@@ -121,6 +126,13 @@ static int patch_all_hits_in_text(uint64_t text_start,uint64_t text_size){
             if(off==SIZE_MAX) break;
             uint64_t hit = text_start + off;
             uint32_t before = *(volatile uint32_t*)hit;
+
+            // Skip if already patched
+            if(before == patchInsn){
+                log_line("Site @0x%llx already patched, skipping", (unsigned long long)hit);
+                start_off = off + 1;
+                continue;
+            }
 
             kern_return_t kr = vm_protect(mach_task_self(), page_align(hit), vm_page_size, 0, VM_PROT_READ|VM_PROT_WRITE|VM_PROT_COPY);
             if(kr!=KERN_SUCCESS){ log_line("vm_protect RW failed @0x%llx: %d",(unsigned long long)hit,kr); return total_patched; }
@@ -176,6 +188,8 @@ __attribute__((visibility("default"))) int instantspaces_verify(void){
 }
 
 __attribute__((constructor)) static void ctor(void){
-    log_line("constructor: payload loaded into Dock pid=%d", getpid());
+    NSOperatingSystemVersion v = [[NSProcessInfo processInfo] operatingSystemVersion];
+    log_line("constructor: payload loaded into Dock pid=%d (macOS %ld.%ld.%ld)",
+             getpid(), (long)v.majorVersion, (long)v.minorVersion, (long)v.patchVersion);
     (void)instantspaces_patch();
 }
