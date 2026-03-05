@@ -1,12 +1,13 @@
 # instantspaces
 
-Disable macOS Desktop Spaces switching animation by patching Dock **in-process** with a tiny scripting addition payload. Supports:
-- macOS: 14 (Sonoma) and 15 (Sequoia)
-- Arch: Apple Silicon (arm64e)
-- Modes:
-  - zero: force 0.0s (instant)
-  - min0125: force 0.125s using a single-instruction FP immediate 
-- Requires: SIP disabled, Xcode Command Line Tools
+Disable macOS Desktop Spaces switching animation by patching Dock **in-process** with a tiny scripting addition payload.
+
+| | |
+|---|---|
+| **macOS** | 14 (Sonoma), 15 (Sequoia) |
+| **Arch** | Apple Silicon (`arm64e`) |
+| **Modes** | `zero`, `min0125` |
+| **Requires** | SIP disabled, Xcode Command Line Tools |
 
 The whole patching mechanism is based on [yabai](https://github.com/koekeishiya/yabai)'s scripting addition. I just wanted to have it stand-alone to fix an issue with [redrawing of floating windows](https://github.com/koekeishiya/yabai/issues/2491).
 
@@ -22,7 +23,8 @@ The whole patching mechanism is based on [yabai](https://github.com/koekeishiya/
 
 ## Inject and patch
 
-We recommend restarting Dock first, then injecting and patching twice (our script does two patch passes followed by verify). Patching twice works around rare attach or timing hiccups.
+> [!TIP]
+> Restart Dock first, then inject and patch twice — the script already does two patch passes followed by verify. Patching twice works around rare attach or timing hiccups.
 
 ```sh
 # Restart Dock so we patch early
@@ -36,17 +38,17 @@ sudo ./scripts/inject.sh min0125
 sudo ./scripts/inject.sh zero
 ```
 
-What the injector does
-- Sets INSTANTSPACES_MODE inside the Dock process
-- dlopen()s the payload
-- Calls instantspaces_patch() twice in a row
-- Calls instantspaces_verify() to list/confirm patched sites
+### What the injector does
+- Sets `INSTANTSPACES_MODE` inside the Dock process
+- `dlopen()`s the payload
+- Calls `instantspaces_patch()` twice in a row
+- Calls `instantspaces_verify()` to list/confirm patched sites
 
-Check logs
-- Console.app: filter “Dock” and “[instantspaces]”
-- File log: /private/var/tmp/instantspaces.<DockPID>.log
+### Check logs
+- Console.app: filter `"Dock"` and `"[instantspaces]"`
+- File log: `/private/var/tmp/instantspaces.<DockPID>.log`
 
-You’ll see messages like:
+You'll see messages like:
 ```
 [instantspaces] constructor: payload loaded into Dock pid=...
 [instantspaces] instantspaces_patch: entered (mode=min0125)
@@ -57,27 +59,30 @@ You’ll see messages like:
 [instantspaces] Verify patched @0x... => 0x1e681000
 ```
 
+---
+
 ## Modes
 
-- zero
-  - Writes opcode 0x2f00e400 at matched sites (forces duration register to 0.0)
-  - Fastest visually, but can cause “floating” windows to momentarily disappear for some users
-- min0125
-  - Writes opcode 0x1e681000 (fmov d0, #0.125) at matched sites
-  - Keeps transitions near-instant while ensuring the compositor gets a frame to redraw
+| Mode | Opcode | Effect |
+|------|--------|--------|
+| `zero` | `0x2f00e400` | Forces duration to 0.0s — instant, but can cause floating windows to momentarily disappear |
+| `min0125` | `0x1e681000` (`fmov d0, #0.125`) | Forces 0.125s — near-instant while giving the compositor a frame to redraw |
 
-Switching modes
-- Modes are set per injection. To change, restart Dock and re-run the inject script with the desired mode:
-  - killall Dock; sudo ./scripts/inject.sh min0125
+### Switching modes
+Modes are set per injection. To change, restart Dock and re-run with the desired mode:
+```sh
+killall Dock; sudo ./scripts/inject.sh min0125
+```
+
+---
 
 ## Auto-run at login (LaunchAgent)
 
 To inject automatically on login (and after Dock relaunches), install a per-user LaunchAgent that runs a small retrying injector wrapper.
 
-1) Edit scripts/auto-inject.sh to choose your default mode (zero or min0125). It already retries multiple times.
-2) Copy and adjust the LaunchAgent (update the absolute path to your repo):
-   - In eu.flawn.instantspaces.inject.plist, set the ProgramArguments path to your auto-inject.sh.
-3) Install and load:
+1. Edit `scripts/auto-inject.sh` to choose your default mode (`zero` or `min0125`). It already retries multiple times.
+2. Copy and adjust the LaunchAgent — in `eu.flawn.instantspaces.inject.plist`, set the `ProgramArguments` path to your `auto-inject.sh`.
+3. Install and load:
 
 ```sh
 # Create ~/Library/LaunchAgents if needed
@@ -98,9 +103,11 @@ launchctl bootout gui/$UID ~/Library/LaunchAgents/eu.flawn.instantspaces.inject.
 launchctl disable gui/$UID/eu.flawn.instantspaces.inject
 ```
 
-Notes
-- The agent runs in your user session (Dock is per-user). It will attempt injection repeatedly for a short window after login and also if Dock restarts.
-- On first use, macOS may prompt to allow Terminal/LLDB under Privacy & Security > Developer Tools. Run the injector once manually if prompts do not appear in background.
+> [!NOTE]
+> The agent runs in your user session (Dock is per-user). It will attempt injection repeatedly for a short window after login and also if Dock restarts.
+> On first use, macOS may prompt to allow Terminal/LLDB under Privacy & Security → Developer Tools. Run the injector once manually if prompts do not appear in background.
+
+---
 
 ## Uninstall
 
@@ -113,16 +120,20 @@ rm -f ~/Library/LaunchAgents/eu.flawn.instantspaces.inject.plist
 ./scripts/uninstall.sh
 ```
 
+---
+
 ## Troubleshooting
 
-- dlopen returns NULL:
-  - Ensure the payload is arm64e (our Makefile builds arm64e)
-  - Clear quarantine and ad-hoc sign (install.sh and make install do this)
-  - Run once manually to grant Developer Tools permission (Terminal/LLDB)
-- EXC_BREAKPOINT during LLDB expr:
-  - Retry inject; our script patches twice by default to withstand occasional attach hiccups
-  - Ensure SIP is relaxed consistently, and “Displays have separate Spaces” is enabled in System Settings > Desktop & Dock
-- Animation still present:
-  - Use min0125 mode for stability if floaters disappear on zero
-  - Confirm Console shows “Total sites patched: 2” (or more) and Verify entries
-  - Kill Dock and inject again to patch earlier in its lifecycle
+**`dlopen` returns `NULL`**
+- Ensure the payload is `arm64e` (the `Makefile` builds `arm64e`)
+- Clear quarantine and ad-hoc sign (`install.sh` and `make install` do this)
+- Run once manually to grant Developer Tools permission (Terminal/LLDB)
+
+**`EXC_BREAKPOINT` during LLDB expr**
+- Retry inject — the script patches twice by default to withstand occasional attach hiccups
+- Ensure SIP is relaxed consistently, and "Displays have separate Spaces" is enabled in System Settings → Desktop & Dock
+
+**Animation still present**
+- Use `min0125` mode for stability if floaters disappear on `zero`
+- Confirm Console shows `"Total sites patched: 2"` (or more) and Verify entries
+- Kill Dock and inject again to patch earlier in its lifecycle
