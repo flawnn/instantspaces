@@ -2,7 +2,9 @@
 set -euo pipefail
 
 # Usage: sudo ./scripts/inject.sh [zero|min0125]
-MODE="${1:-min0125}"  # default to min0125 for stability with floaters
+# Mode is baked into the installed payload.dylib at install time (make install PAYLOAD=...).
+# This script just attaches LLDB and dlopen()s the already-installed payload.
+MODE="${1:-min0125}"
 PAYLOAD="/Library/ScriptingAdditions/instantspaces.osax/Contents/Resources/payload.dylib"
 
 PID="$(pgrep -x Dock || true)"
@@ -11,19 +13,12 @@ if [[ -z "${PID}" ]]; then
   exit 1
 fi
 
-# Attach, set mode, dlopen, patch TWICE, verify, detach.
-# We do two patch passes to mitigate rare attach/timing hiccups.
-# We also print dlerror() right after dlopen.
-# Use compound expressions so LLDB doesn't lose temp vars between calls.
+# Attach, dlopen, detach. The payload __constructor__ patches on load.
+# Check /private/var/tmp/instantspaces.${PID}.log for results.
 /usr/bin/lldb -p "${PID}" -b \
   -o 'settings set target.process.thread.step-out-avoid-nodebug true' \
-  -o "expr (int)setenv(\"INSTANTSPACES_MODE\",\"$MODE\",1)" \
   -o "expr (void*)dlopen(\"$PAYLOAD\", 2)" \
-  -o 'expr (char*)dlerror()' \
-  -o 'expr -- { void *(*my_dlsym)(void*, const char*) = (void*(*)(void*,const char*))dlsym; void *ps = my_dlsym((void*)-2,"instantspaces_patch"); (int)((ps)?((int(*)(void))ps)():-1); }' \
-  -o 'expr -- { void *(*my_dlsym)(void*, const char*) = (void*(*)(void*,const char*))dlsym; void *ps = my_dlsym((void*)-2,"instantspaces_patch"); (int)((ps)?((int(*)(void))ps)():-1); }' \
-  -o 'expr -- { void *(*my_dlsym)(void*, const char*) = (void*(*)(void*,const char*))dlsym; void *vs = my_dlsym((void*)-2,"instantspaces_verify"); (int)((vs)?((int(*)(void))vs)():-1); }' \
   -o 'process detach' \
   -o 'quit'
 
-echo "Injected payload into Dock (pid ${PID}) with mode=$MODE. See Console.app (filter: instantspaces) and /private/var/tmp/instantspaces.${PID}.log"
+echo "Injected into Dock pid=${PID}. Check /private/var/tmp/instantspaces.${PID}.log"

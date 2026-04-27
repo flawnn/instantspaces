@@ -64,6 +64,20 @@ static BOOL find_dock_text(uint64_t *out_text_start,uint64_t *out_text_size){
     return NO;
 }
 
+static uint64_t get_animation_offset(){
+    NSOperatingSystemVersion v=[[NSProcessInfo processInfo] operatingSystemVersion];
+    if(v.majorVersion==14){
+        return 0x1D0000;
+    } else if(v.majorVersion==15){
+        return 0x250000;
+    } else if(v.majorVersion==26){
+        return 0x250000;
+    } else {
+        return 0;    
+    }
+}
+
+
 static void get_patterns(NSArray<NSString*> **out){
     NSOperatingSystemVersion v=[[NSProcessInfo processInfo] operatingSystemVersion];
     if(v.majorVersion==14){
@@ -103,27 +117,27 @@ static void record_patched(uint64_t addr){
     }
 }
 
-// Select patch opcode by env var: INSTANTSPACES_MODE = "zero" | "min0125"
-static uint32_t pick_patch_insn(void){
-    const char *mode = getenv("INSTANTSPACES_MODE");
-    if (mode && strcmp(mode, "min0125") == 0) {
-        // fmov d0, #0.125
-        return 0x1e681000;
-    }
-    // default: zero duration (current behavior)
-    // movi d0, #0 (as used by yabai Write)
-    return 0x2f00e400;
-}
+
+// Select patch opcode by build def: ZERO or MODE_MIN0125
+#ifdef MODE_MIN0125
+    // fmov d0, #0.125
+    static const uint32_t kPatchOpc = 0x1e681000;
+#else
+    // default: zero duration
+    // movi d0, #0
+    static const uint32_t kPatchOpc = 0x2f00e400;
+#endif
+
 
 static int patch_all_hits_in_text(uint64_t text_start,uint64_t text_size){
     NSArray<NSString*> *patterns=nil; get_patterns(&patterns);
-    const uint32_t patchInsn = pick_patch_insn();
+    const uint32_t patchInsn = kPatchOpc;
     int total_patched=0;
 
     for(NSString *ps in patterns){
         unsigned char pat[128], msk[128]; size_t plen=parse_pattern(ps.UTF8String, pat, msk, sizeof(pat));
         if(!plen) continue;
-        size_t start_off=0;
+        size_t start_off= get_animation_offset();
         while(1){
             size_t off=search_buf((const unsigned char*)(uintptr_t)text_start,(size_t)text_size,pat,msk,plen,start_off);
             if(off==SIZE_MAX) break;
