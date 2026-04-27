@@ -2,22 +2,20 @@
 
 Disable macOS Desktop Spaces switching animation by patching Dock **in-process** with a tiny scripting addition payload.
 
-| | |
-|---|---|
-| **macOS** | 14 (Sonoma), 15 (Sequoia) |
-| **Arch** | Apple Silicon (`arm64e`) |
-| **Modes** | `zero`, `min0125` |
-| **Requires** | SIP disabled, Xcode Command Line Tools |
+- **macOS:** 14 (Sonoma), 15 (Sequoia), 26 (Tahoe)
+- **Arch:** Apple Silicon (`arm64e`)  
+- **Modes:** `zero`, `min0125`  
+- **Requires:** SIP disabled, Xcode Command Line Tools
 
 The whole patching mechanism is based on [yabai](https://github.com/koekeishiya/yabai)'s scripting addition. I just wanted to have it stand-alone to fix an issue with [redrawing of floating windows](https://github.com/koekeishiya/yabai/issues/2491).
 
 <details>
-<summary>⁉️ How did I fix it?</summary>
+<summary>How did you fix this mysterious issue? 🤔</summary>
 <br>
 
-> The Spaces switching animation duration is being set to zero and probably fucks around with the compositor rendering phases, so that floating windows or popups are not being redrawn. Only way to fix this is triggering a redraw which is cumbersome
+> The Spaces switching animation duration is being set to zero and probably fucks around with the compositor rendering phases, so that floating windows or popups are not being redrawn. Only way to fix this is triggering a redraw which is cumbersome.
 >
-> So I set a very small animation duration frame of 0.125 seconds that still allows for redraws but is faster than stock.
+> I played around with the animation duration frames, and set a very small animation duration frame of 0.125 seconds that still allows for redraws but is faster than stock. Profit!
 
 </details>
 
@@ -125,16 +123,4 @@ make uninstall
 
 ## Troubleshooting
 
-**`dlopen` returns `NULL`**
-- Ensure the payload is `arm64e` (the `Makefile` builds `arm64e`)
-- Clear quarantine and ad-hoc sign (`install.sh` and `make install` do this)
-- Run once manually to grant Developer Tools permission (Terminal/LLDB)
-
-**`EXC_BREAKPOINT` during LLDB expr**
-- Retry inject — the script patches twice by default to withstand occasional attach hiccups
-- Ensure SIP is relaxed consistently, and "Displays have separate Spaces" is enabled in System Settings → Desktop & Dock
-
-**Animation still present**
-- Use `min0125` mode for stability if floaters disappear on `zero`
-- Confirm Console shows `"Total sites patched: 2"` (or more) and Verify entries
-- Kill Dock and inject again to patch earlier in its lifecycle
+Feel free to open a GitHub Issue!
