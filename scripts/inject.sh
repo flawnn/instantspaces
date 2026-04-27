@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Usage: sudo ./scripts/inject.sh [zero|min0125]
+# Usage: sudo ./scripts/inject.sh
 # Mode is baked into the installed payload.dylib at install time (make install PAYLOAD=...).
 # This script just attaches LLDB and dlopen()s the already-installed payload.
-MODE="${1:-min0125}"
 PAYLOAD="/Library/ScriptingAdditions/instantspaces.osax/Contents/Resources/payload.dylib"
 
 PID="$(pgrep -x Dock || true)"

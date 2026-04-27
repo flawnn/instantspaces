@@ -72,8 +72,10 @@ static uint64_t get_animation_offset(){
         return 0x250000;
     } else if(v.majorVersion==26){
         return 0x250000;
+    } else if(v.majorVersion==13){
+        return 0x1E0000; // Ventura
     } else {
-        return 0;    
+        return 0; // unknown — full scan fallback
     }
 }
 
@@ -178,8 +180,11 @@ __attribute__((visibility("default"))) int instantspaces_patch(void){
     return 1;
 #else
     @autoreleasepool {
-        const char *mode = getenv("INSTANTSPACES_MODE");
-        log_line("instantspaces_patch: entered (mode=%s)", mode ? mode : "zero");
+#ifdef MODE_MIN0125
+        log_line("instantspaces_patch: entered (mode=min0125)");
+#else
+        log_line("instantspaces_patch: entered (mode=zero)");
+#endif
         uint64_t text_start=0, text_size=0;
         if(!find_dock_text(&text_start,&text_size)){ log_line("Failed to find Dock __TEXT; abort."); return 1; }
         log_line("Dock __TEXT=[0x%llx..0x%llx)",(unsigned long long)text_start,(unsigned long long)(text_start+text_size));

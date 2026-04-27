@@ -85,45 +85,37 @@ killall Dock && sudo ./scripts/inject.sh
 
 ---
 
-## Auto-run at login (LaunchAgent)
+## Auto-run at login (LaunchAgent + watcher)
 
-To inject automatically on login (and after Dock relaunches), install a per-user LaunchAgent that runs a small retrying injector wrapper.
-
-1. Edit `scripts/auto-inject.sh` to choose your default mode (`zero` or `min0125`). It already retries multiple times.
-2. Copy and adjust the LaunchAgent — in `eu.flawn.instantspaces.inject.plist`, set the `ProgramArguments` path to your `auto-inject.sh`.
-3. Install and load:
+`make install-agent` installs a persistent watcher daemon that:
+- Injects automatically at login
+- Re-injects automatically whenever Dock restarts
 
 ```sh
-# Create ~/Library/LaunchAgents if needed
-mkdir -p ~/Library/LaunchAgents
+# Build everything and install the dylib first
+make
+sudo make install INJECT_MODE=min0125   # or zero
 
-# Copy the plist
-cp eu.flawn.instantspaces.inject.plist ~/Library/LaunchAgents/
-
-# Load (for the current user session)
-launchctl bootstrap gui/$UID ~/Library/LaunchAgents/eu.flawn.instantspaces.inject.plist
-launchctl enable gui/$UID/eu.flawn.instantspaces.inject
-launchctl kickstart -k gui/$UID/eu.flawn.instantspaces.inject
+# Then install the watcher and LaunchAgent (no manual path editing needed)
+make install-agent
 ```
 
-To unload/disable:
+The watcher runs as a per-user LaunchAgent. Logs appear in `~/Library/Logs/instantspaces.watcher.*.log`.
+
+To unload/uninstall everything:
 ```sh
-launchctl bootout gui/$UID ~/Library/LaunchAgents/eu.flawn.instantspaces.inject.plist
-launchctl disable gui/$UID/eu.flawn.instantspaces.inject
+make uninstall
 ```
 
 > [!NOTE]
-> The agent runs in your user session (Dock is per-user). It will attempt injection repeatedly for a short window after login and also if Dock restarts.
-> On first use, macOS may prompt to allow Terminal/LLDB under Privacy & Security → Developer Tools. Run the injector once manually if prompts do not appear in background.
+> On first use, macOS may prompt to allow Terminal/LLDB under Privacy & Security → Developer Tools. Run `sudo ./scripts/inject.sh` once manually if the prompt does not appear automatically.
 
 ---
 
 ## Uninstall
 
 ```sh
-# Optional: unload agent if installed
-launchctl bootout gui/$UID ~/Library/LaunchAgents/eu.flawn.instantspaces.inject.plist 2>/dev/null || true
-rm -f ~/Library/LaunchAgents/eu.flawn.instantspaces.inject.plist
+make uninstall
 
 # Remove the osax payload
 ./scripts/uninstall.sh

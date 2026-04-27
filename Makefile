@@ -26,20 +26,23 @@ install: $(PAYLOAD) osax/Info.plist
 	sudo cp $(PAYLOAD) /Library/ScriptingAdditions/instantspaces.osax/Contents/Resources/payload.dylib
 	sudo codesign -s - -f /Library/ScriptingAdditions/instantspaces.osax/Contents/Resources/payload.dylib || true
 	sudo xattr -dr com.apple.quarantine /Library/ScriptingAdditions/instantspaces.osax/Contents/Resources/payload.dylib || true
-# Install the watcher binary + LaunchAgent plist with correct paths substituted
+# Install the watcher binary + LaunchAgent plist with correct paths substituted.
+# Run after: make && sudo make install INJECT_MODE=min0125
 install-agent: watcher
 	sudo cp watcher /usr/local/bin/instantspaces-watcher
 	sudo cp scripts/auto-inject.sh /usr/local/bin/instantspaces-watcher-inject
 	sudo chmod +x /usr/local/bin/instantspaces-watcher-inject
 	sudo codesign -s - /usr/local/bin/instantspaces-watcher || true
-	mkdir -p ~/Library/LaunchAgents
-	sed 's|WATCHER_PATH|/usr/local/bin/instantspaces-watcher|g' \
+	mkdir -p $(HOME)/Library/LaunchAgents
+	mkdir -p $(HOME)/Library/Logs
+	sed -e 's|WATCHER_PATH|/usr/local/bin/instantspaces-watcher|g' \
+	    -e 's|~/Library/Logs|$(HOME)/Library/Logs|g' \
 		eu.flawn.instantspaces.inject.plist \
-		> ~/Library/LaunchAgents/eu.flawn.instantspaces.inject.plist
+		> $(HOME)/Library/LaunchAgents/eu.flawn.instantspaces.inject.plist
 	launchctl bootout gui/$(shell id -u)/eu.flawn.instantspaces.inject 2>/dev/null || true
-	launchctl bootstrap gui/$(shell id -u) ~/Library/LaunchAgents/eu.flawn.instantspaces.inject.plist
+	launchctl bootstrap gui/$(shell id -u) $(HOME)/Library/LaunchAgents/eu.flawn.instantspaces.inject.plist
 	launchctl enable gui/$(shell id -u)/eu.flawn.instantspaces.inject
-	@echo "LaunchAgent installed and loaded."
+	@echo "LaunchAgent installed and loaded. Logs: $(HOME)/Library/Logs/instantspaces.watcher.*.log"
 
 uninstall:
 	launchctl bootout gui/$(shell id -u)/eu.flawn.instantspaces.inject 2>/dev/null || true

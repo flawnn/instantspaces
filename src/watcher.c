@@ -104,6 +104,6 @@ int main(void) {
         reinject();
     }
 
-    close(kq);
+    close(kq); // unreachable — loop runs indefinitely
     return 0;
 }

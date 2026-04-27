@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Config: choose your default mode (zero|min0125)
-MODE="${1:-zero}"
-
+# Mode is baked into the installed payload.dylib at make install time.
+# This argument is accepted for compatibility but does not affect behaviour.
 PAYLOAD="/Library/ScriptingAdditions/instantspaces.osax/Contents/Resources/payload.dylib"
 
 # Try injection a few times (works around occasional attach/transient hiccups)
@@ -15,19 +14,19 @@ for attempt in $(seq 1 $tries); do
     sleep 1
   done
 
-  # Give Dock 2s to initialise after appearing
-  sleep 2
+  # Give Dock 2s to initialise (only needed on first attempt; harmless on retry)
+  [[ $attempt -eq 1 ]] && sleep 2
 
   PID=$(pgrep -x Dock)
 
-  # Attach by PID and inject
+  # Attach by PID and dlopen — constructor patches on load, no setenv needed
   timeout 15 /usr/bin/lldb -p "$PID" -b \
     -o 'settings set target.process.thread.step-out-avoid-nodebug true' \
     -o "expr (void*)dlopen(\"$PAYLOAD\", 2)" \
     -o 'process detach' \
     -o 'quit' || true
 
-  # After lldb detaches, poll log for confirmation
+  # Poll log for confirmation — real success signal
   LOG="/private/var/tmp/instantspaces.$(pgrep -x Dock).log"
   for i in {1..10}; do
     if [[ -f "$LOG" ]] && grep -q "Total sites patched: [1-9]" "$LOG"; then
@@ -37,9 +36,8 @@ for attempt in $(seq 1 $tries); do
     sleep 1
   done
 
-  echo "patch not confirmed after 10s"
-  sleep 2
+  echo "patch not confirmed after 10s, retrying..."
 done
 
-echo "auto-inject failed after $tries attempts (mode=$MODE)"
-exit 75  # temporary failure; launchd will retry per KeepAlive/ThrottleInterval
+echo "auto-inject failed after $tries attempts"
+exit 75  # temporary failure; watcher will retry on next Dock restart
