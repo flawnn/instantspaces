@@ -22,8 +22,8 @@ The whole patching mechanism is based on [yabai](https://github.com/koekeishiya/
 ## Install via Homebrew (recommended)
 
 ```sh
-brew tap flawn/instantspaces
-brew install --HEAD flawn/instantspaces/instantspaces
+brew tap flawnn/homebrew
+brew install --HEAD flawnn/homebrew/instantspaces
 ```
 
 After install, Homebrew will print setup instructions. In short:
