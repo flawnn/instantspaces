@@ -67,6 +67,9 @@ static BOOL find_dock_text(uint64_t *out_text_start,uint64_t *out_text_size){
 static void get_patterns(NSArray<NSString*> **out){
     NSOperatingSystemVersion v=[[NSProcessInfo processInfo] operatingSystemVersion];
     if(v.majorVersion==14){
+        // NOTE: upstream yabai returns NULL here and uses an offset-based patch for Sonoma instead.
+        // We intentionally diverge: we use pattern search on all versions for simplicity.
+        // The "already patched" guard below prevents double-patching if the pattern matches elsewhere.
         *out=@[
             @"00 10 6A 1E E0 03 14 AA ?? 03 ?? AA", // Sonoma
             @"00 10 6A 1E A8 ?? ?? D1 ?? 01 ?? F8"  // Sequoia fallback
@@ -143,6 +146,9 @@ static int patch_all_hits_in_text(uint64_t text_start,uint64_t text_size){
             (void)vm_protect(mach_task_self(), page_align(hit), vm_page_size, 0, VM_PROT_READ|VM_PROT_EXECUTE);
 
             uint32_t after = *(volatile uint32_t*)hit;
+            if (after != patchInsn) {
+                log_line("WRITE FAILED @0x%llx: expected=0x%08x got=0x%08x (vm_protect may have silently dropped the write)", (unsigned long long)hit, patchInsn, after);
+            }
             log_line("Patched site @0x%llx: before=0x%08x after=0x%08x pattern='%s'",
                      (unsigned long long)hit, before, after, ps.UTF8String);
             record_patched(hit);
