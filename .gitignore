@@ -1,3 +1,6 @@
 payload.dylib
+payload-zero.dylib
+payload-min0125.dylib
+watcher
 .claude/
 .worktrees/

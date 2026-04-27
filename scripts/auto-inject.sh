@@ -2,46 +2,42 @@
 set -euo pipefail
 
 # Config: choose your default mode (zero|min0125)
-MODE="${1:-min0125}"
+MODE="${1:-zero}"
 
 PAYLOAD="/Library/ScriptingAdditions/instantspaces.osax/Contents/Resources/payload.dylib"
-
-# Set a custom process title so it is easy to find/kill via pgrep/pkill
-if command -v exec -a >/dev/null 2>&1; then
-  : # exec -a supported by bash builtin when used on invocation; noop here
-fi
-
-# Wait for Dock to appear
-for i in {1..30}; do
-  if pgrep -x Dock >/dev/null 2>&1; then
-    break
-  fi
-  sleep 1
-done
-
-PID="$(pgrep -x Dock || true)"
-if [[ -z "${PID}" ]]; then
-  echo "Dock not running; giving up."
-  exit 75  # temporary failure so launchd can retry
-fi
 
 # Try injection a few times (works around occasional attach/transient hiccups)
 tries=2
 for attempt in $(seq 1 $tries); do
-  echo "auto-inject attempt $attempt/$tries (mode=$MODE)"
-  /usr/bin/lldb -p "${PID}" -b \
+  # Wait for Dock to appear
+  for i in {1..30}; do
+    pgrep -x Dock >/dev/null && break
+    sleep 1
+  done
+
+  # Give Dock 2s to initialise after appearing
+  sleep 2
+
+  PID=$(pgrep -x Dock)
+
+  # Attach by PID and inject
+  timeout 15 /usr/bin/lldb -p "$PID" -b \
     -o 'settings set target.process.thread.step-out-avoid-nodebug true' \
-    -o "expr (int)setenv(\"INSTANTSPACES_MODE\",\"$MODE\",1)" \
     -o "expr (void*)dlopen(\"$PAYLOAD\", 2)" \
-    -o 'expr (char*)dlerror()' \
-    -o 'expr -- { void *(*my_dlsym)(void*, const char*) = (void*(*)(void*,const char*))dlsym; void *ps = my_dlsym((void*)-2,"instantspaces_patch"); (int)((ps)?((int(*)(void))ps)():-1); }' \
-    -o 'expr -- { void *(*my_dlsym)(void*, const char*) = (void*(*)(void*,const char*))dlsym; void *ps = my_dlsym((void*)-2,"instantspaces_patch"); (int)((ps)?((int(*)(void))ps)():-1); }' \
-    -o 'expr -- { void *(*my_dlsym)(void*, const char*) = (void*(*)(void*,const char*))dlsym; void *vs = my_dlsym((void*)-2,"instantspaces_verify"); (int)((vs)?((int(*)(void))vs)():-1); }' \
     -o 'process detach' \
-    -o 'quit' && {
-      echo "auto-inject success"
+    -o 'quit' || true
+
+  # After lldb detaches, poll log for confirmation
+  LOG="/private/var/tmp/instantspaces.$(pgrep -x Dock).log"
+  for i in {1..10}; do
+    if [[ -f "$LOG" ]] && grep -q "Total sites patched: [1-9]" "$LOG"; then
+      echo "patch confirmed"
       exit 0
-    }
+    fi
+    sleep 1
+  done
+
+  echo "patch not confirmed after 10s"
   sleep 2
 done
 

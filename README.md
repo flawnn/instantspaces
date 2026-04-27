@@ -21,28 +21,36 @@ The whole patching mechanism is based on [yabai](https://github.com/koekeishiya/
 
 </details>
 
-## Inject and patch
+## Build and install
 
-> [!TIP]
-> Restart Dock first, then inject and patch twice — the script already does two patch passes followed by verify. Patching twice works around rare attach or timing hiccups.
+Choose a mode at install time — mode is baked into the binary, not set at runtime:
 
 ```sh
-# Restart Dock so we patch early
-killall Dock
+# Build both dylibs
+make
 
-# Inject and patch with a mode:
-#   zero    -> 0.0s animation (instant)
-#   min0125 -> 0.125s animation (near-instant; helps floating windows)
-sudo ./scripts/inject.sh min0125
-# or
-sudo ./scripts/inject.sh zero
+# Install zero mode (instant, may cause floating window flicker)
+sudo make install PAYLOAD=payload-zero.dylib
+
+# Install min0125 mode (0.125s — recommended, fixes floating window redraws)
+sudo make install PAYLOAD=payload-min0125.dylib
+```
+
+## Inject and patch
+
+```sh
+# Restart Dock so we patch early, then inject
+killall Dock
+sudo ./scripts/inject.sh
+
+# Or use the auto-inject script (handles Dock wait + confirmation)
+sudo ./scripts/auto-inject.sh min0125
 ```
 
 ### What the injector does
-- Sets `INSTANTSPACES_MODE` inside the Dock process
-- `dlopen()`s the payload
-- Calls `instantspaces_patch()` twice in a row
-- Calls `instantspaces_verify()` to list/confirm patched sites
+- `dlopen()`s the installed payload
+- The `__constructor__` fires immediately on load and patches all sites
+- Confirm via log: `grep "Total sites patched" /private/var/tmp/instantspaces.*.log`
 
 ### Check logs
 - Console.app: filter `"Dock"` and `"[instantspaces]"`
@@ -69,9 +77,10 @@ You'll see messages like:
 | `min0125` | `0x1e681000` (`fmov d0, #0.125`) | Forces 0.125s — near-instant while giving the compositor a frame to redraw |
 
 ### Switching modes
-Modes are set per injection. To change, restart Dock and re-run with the desired mode:
+Modes are baked into the installed dylib at `make install` time. To switch:
 ```sh
-killall Dock; sudo ./scripts/inject.sh min0125
+sudo make install PAYLOAD=payload-zero.dylib
+killall Dock && sudo ./scripts/inject.sh
 ```
 
 ---

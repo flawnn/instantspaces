@@ -8,6 +8,7 @@
     <key>ProgramArguments</key>
     <array>
       <!-- TODO: update this to the absolute path of auto-inject.sh in your clone -->
+      <!-- Mode arg is unused at runtime — mode is baked into the installed payload.dylib -->
       <string>/path/to/instantspaces/scripts/auto-inject.sh</string>
       <string>min0125</string>
     </array>
