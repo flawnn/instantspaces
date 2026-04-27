@@ -11,10 +11,14 @@ payload-zero.dylib: src/payload.m
 payload-min0125.dylib: src/payload.m
 	$(CC) $(CFLAGS_COMMON) -DMODE_MIN0125 -arch arm64e -dynamiclib $(FRAMEWORKS) $(EXPORTS) src/payload.m -o $@
 
-watcher: src/watcher.c
-	$(CC) $(CFLAGS_COMMON) -arch arm64e src/watcher.c -o $@
+INJECT_MODE ?= min0125
 
-PAYLOAD ?= payload-zero.dylib
+watcher: src/watcher.c
+	$(CC) $(CFLAGS_COMMON) -arch arm64e \
+		-DINJECT_MODE='"$(INJECT_MODE)"' \
+		src/watcher.c -o $@
+
+PAYLOAD ?= payload-$(INJECT_MODE).dylib
 
 install: $(PAYLOAD) osax/Info.plist
 	sudo mkdir -p /Library/ScriptingAdditions/instantspaces.osax/Contents/Resources
@@ -22,7 +26,26 @@ install: $(PAYLOAD) osax/Info.plist
 	sudo cp $(PAYLOAD) /Library/ScriptingAdditions/instantspaces.osax/Contents/Resources/payload.dylib
 	sudo codesign -s - -f /Library/ScriptingAdditions/instantspaces.osax/Contents/Resources/payload.dylib || true
 	sudo xattr -dr com.apple.quarantine /Library/ScriptingAdditions/instantspaces.osax/Contents/Resources/payload.dylib || true
+# Install the watcher binary + LaunchAgent plist with correct paths substituted
+install-agent: watcher
+	sudo cp watcher /usr/local/bin/instantspaces-watcher
+	sudo cp scripts/auto-inject.sh /usr/local/bin/instantspaces-watcher-inject
+	sudo chmod +x /usr/local/bin/instantspaces-watcher-inject
+	sudo codesign -s - /usr/local/bin/instantspaces-watcher || true
+	mkdir -p ~/Library/LaunchAgents
+	sed 's|WATCHER_PATH|/usr/local/bin/instantspaces-watcher|g' \
+		eu.flawn.instantspaces.inject.plist \
+		> ~/Library/LaunchAgents/eu.flawn.instantspaces.inject.plist
+	launchctl bootout gui/$(shell id -u)/eu.flawn.instantspaces.inject 2>/dev/null || true
+	launchctl bootstrap gui/$(shell id -u) ~/Library/LaunchAgents/eu.flawn.instantspaces.inject.plist
+	launchctl enable gui/$(shell id -u)/eu.flawn.instantspaces.inject
+	@echo "LaunchAgent installed and loaded."
+
 uninstall:
+	launchctl bootout gui/$(shell id -u)/eu.flawn.instantspaces.inject 2>/dev/null || true
+	rm -f ~/Library/LaunchAgents/eu.flawn.instantspaces.inject.plist
+	sudo rm -f /usr/local/bin/instantspaces-watcher
+	sudo rm -f /usr/local/bin/instantspaces-watcher-inject
 	sudo rm -rf /Library/ScriptingAdditions/instantspaces.osax
 
 clean:

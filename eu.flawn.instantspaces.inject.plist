@@ -5,23 +5,18 @@
     <key>Label</key>
     <string>eu.flawn.instantspaces.inject</string>
 
+    <!-- Installed automatically by: make install-agent -->
+    <!-- WATCHER_PATH is replaced with /usr/local/bin/instantspaces-watcher by make install-agent -->
     <key>ProgramArguments</key>
     <array>
-      <!-- TODO: update this to the absolute path of auto-inject.sh in your clone -->
-      <!-- Mode arg is unused at runtime — mode is baked into the installed payload.dylib -->
-      <string>/path/to/instantspaces/scripts/auto-inject.sh</string>
-      <string>min0125</string>
+      <string>WATCHER_PATH</string>
     </array>
 
-    <!-- Run when loaded (login) and only keep alive on failure (so success exits cleanly) -->
+    <!-- Keep the watcher running always — it monitors Dock indefinitely -->
     <key>RunAtLoad</key><true/>
-    <key>KeepAlive</key>
-    <dict>
-      <key>SuccessfulExit</key>
-      <false/>
-    </dict>
+    <key>KeepAlive</key><true/>
 
-    <!-- Ensure login session -->
+    <!-- Ensure login session (required for Dock access) -->
     <key>LimitLoadToSessionType</key>
     <string>Aqua</string>
 
@@ -32,14 +27,10 @@
       <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
     </dict>
 
-    <!-- Optional: throttle restarts in case of rapid failures -->
-    <key>ThrottleInterval</key>
-    <integer>5</integer>
-
-    <!-- Optional: log paths for debugging -->
+    <!-- Log watcher output -->
     <key>StandardOutPath</key>
-    <string>~/Library/Logs/instantspaces.auto-inject.out.log</string>
+    <string>~/Library/Logs/instantspaces.watcher.out.log</string>
     <key>StandardErrorPath</key>
-    <string>~/Library/Logs/instantspaces.auto-inject.err.log</string>
+    <string>~/Library/Logs/instantspaces.watcher.err.log</string>
   </dict>
 </plist>

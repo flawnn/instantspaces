@@ -3,28 +3,31 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <sys/event.h>
 #include <sys/time.h>
 #include <sys/proc_info.h>
 #include <libproc.h>
 
-// Path to the inject script — update to match your clone
+// Installed by: make install-agent
+// Configured by: INJECT_MODE at build time (-DINJECT_MODE='"zero"')
 #ifndef INJECT_SCRIPT
-#define INJECT_SCRIPT "/usr/local/bin/instantspaces-inject"
+#define INJECT_SCRIPT "/usr/local/bin/instantspaces-watcher-inject"
 #endif
 
 #ifndef INJECT_MODE
 #define INJECT_MODE "min0125"
 #endif
 
-// Find the PID of the running Dock process
+// Find the PID of the running Dock process by path
 static pid_t find_dock_pid(void) {
     pid_t pids[1024];
     int n = proc_listallpids(pids, sizeof(pids));
     for (int i = 0; i < n; i++) {
-        char name[PROC_PIDPATHINFO_MAXSIZE];
-        if (proc_pidpath(pids[i], name, sizeof(name)) > 0) {
-            if (strstr(name, "/Dock")) {
+        char path[PROC_PIDPATHINFO_MAXSIZE];
+        if (proc_pidpath(pids[i], path, sizeof(path)) > 0) {
+            // Match the full Dock binary path, not just any process containing "Dock"
+            if (strstr(path, "/Dock.app/Contents/MacOS/Dock")) {
                 return pids[i];
             }
         }
@@ -32,30 +35,43 @@ static pid_t find_dock_pid(void) {
     return 0;
 }
 
-// Re-inject by exec'ing auto-inject.sh as a child process
+// Fork and exec the inject script; reap the child to avoid zombies
 static void reinject(void) {
     pid_t child = fork();
+    if (child < 0) {
+        perror("[watcher] fork");
+        return;
+    }
     if (child == 0) {
-        // Child: exec the inject script
         execl(INJECT_SCRIPT, INJECT_SCRIPT, INJECT_MODE, NULL);
-        // Only reached if execl fails
-        perror("execl inject script");
+        perror("[watcher] execl");
         _exit(1);
     }
-    // Parent: don't wait — fire and forget
-    // launchd manages the watcher's lifecycle; injection confirms itself via log
+    // Wait for the child so it doesn't become a zombie process
+    int status;
+    waitpid(child, &status, 0);
+    if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
+        printf("[watcher] inject script exited with code %d\n", WEXITSTATUS(status));
+    }
 }
 
 int main(void) {
-    // Create the kqueue mailbox
     int kq = kqueue();
     if (kq == -1) {
-        perror("kqueue");
+        perror("[watcher] kqueue");
         return 1;
     }
 
+    // Initial inject on startup — Dock is already running when the LaunchAgent fires at login
+    printf("[watcher] startup: waiting for Dock...\n");
+    while (find_dock_pid() == 0) sleep(1);
+    sleep(2); // let Dock finish initialising before injecting
+    printf("[watcher] startup: injecting\n");
+    reinject();
+
+    // Main loop: watch Dock for exit, re-inject on each restart
     while (1) {
-        // Step 1: find Dock — retry until it appears
+        // Find current Dock PID — retry if not yet running
         pid_t dock_pid = 0;
         while (dock_pid == 0) {
             dock_pid = find_dock_pid();
@@ -63,30 +79,29 @@ int main(void) {
         }
         printf("[watcher] watching Dock pid=%d\n", dock_pid);
 
-        // Step 2: register NOTE_EXIT on the Dock PID
+        // Register NOTE_EXIT on the Dock PID — fires the moment Dock exits
         struct kevent change;
         EV_SET(&change, dock_pid, EVFILT_PROC, EV_ADD | EV_ONESHOT, NOTE_EXIT, 0, NULL);
         if (kevent(kq, &change, 1, NULL, 0, NULL) == -1) {
-            perror("kevent register");
+            perror("[watcher] kevent register");
             sleep(1);
             continue;
         }
 
-        // Step 3: block until Dock exits — zero CPU while waiting
+        // Block here — zero CPU until Dock exits
         struct kevent event;
         if (kevent(kq, NULL, 0, &event, 1, NULL) == -1) {
-            perror("kevent wait");
+            perror("[watcher] kevent wait");
             sleep(1);
             continue;
         }
 
-        printf("[watcher] Dock exited (pid=%d), re-injecting...\n", dock_pid);
+        printf("[watcher] Dock exited (pid=%d), waiting for relaunch...\n", dock_pid);
 
-        // Step 4: give launchd time to respawn Dock, then re-inject
+        // Give launchd ~2s to respawn Dock before injecting
         sleep(2);
+        printf("[watcher] re-injecting\n");
         reinject();
-
-        // Loop back — find the new Dock PID and re-register
     }
 
     close(kq);
