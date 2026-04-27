@@ -19,7 +19,31 @@ The whole patching mechanism is based on [yabai](https://github.com/koekeishiya/
 
 </details>
 
-## Build and install
+## Install via Homebrew (recommended)
+
+```sh
+brew tap flawn/instantspaces
+brew install --HEAD flawn/instantspaces/instantspaces
+```
+
+After install, Homebrew will print setup instructions. In short:
+
+```sh
+# 1. Install system files — choose your mode (default: min0125)
+sudo bash $(brew --prefix)/share/instantspaces/install-system.sh
+
+# For zero mode instead:
+sudo bash $(brew --prefix)/share/instantspaces/install-system.sh --mode zero
+
+# 2. Install the watcher LaunchAgent (auto-injects at login)
+bash $(brew --prefix)/share/instantspaces/install-agent.sh
+```
+
+> Not sure which mode to pick? See [Modes](#modes) below.
+
+---
+
+## Build and install (manual)
 
 Choose a mode at install time — mode is baked into the binary, not set at runtime:
 
@@ -27,11 +51,11 @@ Choose a mode at install time — mode is baked into the binary, not set at runt
 # Build both dylibs
 make
 
-# Install zero mode (instant, may cause floating window flicker)
-sudo make install PAYLOAD=payload-zero.dylib
-
 # Install min0125 mode (0.125s — recommended, fixes floating window redraws)
-sudo make install PAYLOAD=payload-min0125.dylib
+sudo bash scripts/install-system.sh
+
+# Install zero mode (instant, may cause floating window flicker)
+sudo bash scripts/install-system.sh --mode zero
 ```
 
 ## Inject and patch
@@ -92,10 +116,11 @@ killall Dock && sudo ./scripts/inject.sh
 ```sh
 # Build everything and install the dylib first
 make
-sudo make install INJECT_MODE=min0125   # or zero
+sudo bash scripts/install-system.sh        # min0125 (default)
+# sudo bash scripts/install-system.sh --mode zero  # for zero mode
 
-# Then install the watcher and LaunchAgent (no manual path editing needed)
-make install-agent
+# Then install the watcher and LaunchAgent
+bash scripts/install-agent.sh
 ```
 
 The watcher runs as a per-user LaunchAgent. Logs appear in `~/Library/Logs/instantspaces.watcher.*.log`.
@@ -113,10 +138,8 @@ make uninstall
 ## Uninstall
 
 ```sh
-make uninstall
-
-# Remove the osax payload
-./scripts/uninstall.sh
+bash scripts/install-agent.sh --uninstall
+sudo bash scripts/install-system.sh --uninstall
 ```
 
 ---
